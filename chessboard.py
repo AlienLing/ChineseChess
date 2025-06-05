@@ -154,7 +154,7 @@ class Chessboard(object):
         for chessman in self.__chessmans_hash.values():
             chessman.clear_moving_list()
 
-    def move_chessman(self, chessman, col_num, row_num, 
+    def move_chessman(self, chessman, col_num, row_num,
                       is_record = False, old_x = 0, old_y = 0):
         if chessman.is_red == self.__is_red_turn:
             chessman_old = self.remove_chessman_target(col_num, row_num)
@@ -546,7 +546,50 @@ class Chessboard(object):
                     final_move = move
                     break
         return (self.winner != None, final_move)
+    def from_fen(self, fen):
+        """
+        根据FEN字符串还原棋盘状态
+        """
+        # 清空棋盘
+        self.__chessmans = [([None] * 10) for _ in range(9)]
+        self.__chessmans_hash = {}
+        self.__is_red_turn = True
+        self.turns = 1
+        self.record = ''
+        self.winner = None
 
+        rows = fen.split('/')
+        for y in range(9, -1, -1):
+            row = rows[9 - y]
+            x = 0
+            for ch in row:
+                if ch.isdigit():
+                    x += int(ch)
+                else:
+                    # 创建棋子对象
+                    is_red = ch.isupper()
+                    # 通过FEN字符查找棋子类型
+                    piece_type = ch.upper()
+                    if piece_type == 'R':
+                        c = Rook(" 车红 " if is_red else " 车黑 ", f"rook_{x}_{y}", is_red, self, ch)
+                    elif piece_type == 'N' or piece_type == 'K':  # N/K: 马
+                        c = Knight(" 马红 " if is_red else " 马黑 ", f"knight_{x}_{y}", is_red, self, ch)
+                    elif piece_type == 'C':
+                        c = Cannon(" 炮红 " if is_red else " 炮黑 ", f"cannon_{x}_{y}", is_red, self, ch)
+                    elif piece_type == 'E':
+                        c = Elephant(" 相红 " if is_red else " 象黑 ", f"elephant_{x}_{y}", is_red, self, ch)
+                    elif piece_type == 'M':
+                        c = Mandarin(" 仕红 " if is_red else " 士黑 ", f"mandarin_{x}_{y}", is_red, self, ch)
+                    elif piece_type == 'S':
+                        c = King(" 帅红 " if is_red else " 将黑 ", f"king_{x}_{y}", is_red, self, ch)
+                    elif piece_type == 'P':
+                        c = Pawn(" 兵红 " if is_red else " 卒黑 ", f"pawn_{x}_{y}", is_red, self, ch)
+                    else:
+                        continue
+                    c.add_to_board(x, y)
+                    x += 1
+        self.clear_chessmans_moving_list()
+        self.calc_chessmans_moving_list()
 
 
 
@@ -556,4 +599,3 @@ RECORD_NOTES = [
     ['6', u'六'], ['7', u'七'], ['8', u'八'],
     ['9', u'九']
 ]
-

@@ -50,14 +50,22 @@ class PlayWithHuman:
 
     def undo_move(self):
         """
-        悔棋操作：回退至上一状态
+        悔棋功能：回退到上一步（建议悔棋时回退两步：人和AI各一步）
         """
-        if len(self.history) > 1:
+        if len(self.history) > 2:
+            self.history.pop()  # 弹出当前状态
+            self.history.pop()  # 再弹出AI上一步
+            prev_state = self.history[-1]
+            self.env.set_state(prev_state)
+            self.env.board.print_to_cl()
+            print("悔棋成功，已回到上一步（人和AI各一步）。")
+        elif len(self.history) > 1:
+            # 只剩初始和一步，退回初始
             self.history.pop()
             prev_state = self.history[-1]
             self.env.set_state(prev_state)
             self.env.board.print_to_cl()
-            print("悔棋成功，已回到上一步。")
+            print("悔棋成功，已回到初始。")
         else:
             print("已经是初始局面，无法悔棋。")
 

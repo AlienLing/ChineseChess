@@ -68,6 +68,9 @@ class PlayWithHuman:
         if self.config.opts.bg_style == 'WOOD':
             self.chessman_w += 1
             self.chessman_h += 1
+        # AI线程管理
+        self.ai_should_exit = False
+        self.ai_worker = None
 
     def load_model(self):
         # 加载模型及权重，如果无则新建
@@ -102,12 +105,7 @@ class PlayWithHuman:
         t_rect.y = 10
         widget_background.blit(t, t_rect)
 
-        # 添加悔棋按钮区域
-        self.undo_button_rect = Rect(self.width + 20, self.height - 60, 100, 40)
-        pygame.draw.rect(widget_background, (200, 200, 200), self.undo_button_rect)
-        undo_font = pygame.font.Font(font_file, 20)
-        undo_text = undo_font.render("悔棋", True, (0, 0, 0))
-        widget_background.blit(undo_text, (self.width + 40, self.height - 50))
+        # 不再绘制悔棋按钮区域
 
         screen.blit(board_background, (0, 0))
         screen.blit(widget_background, (self.width, 0))
@@ -141,15 +139,19 @@ class PlayWithHuman:
         # 历史初始化为初始状态
         self.history = [self.env.get_state()]
 
-        ai_worker = Thread(target=self.ai_move, name="ai_worker")
-        ai_worker.daemon = True
-        ai_worker.start()
+        # 启动AI线程
+        self.ai_should_exit = False
+        self.ai_worker = Thread(target=self.ai_move, name="ai_worker")
+        self.ai_worker.daemon = True
+        self.ai_worker.start()
 
         while not self.env.board.is_end():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.env.board.print_record()
-                    self.ai.close(wait=False)
+                    self.ai_should_exit = True
+                    if self.ai_worker:
+                        self.ai_worker.join(timeout=2)
                     game_id = datetime.now().strftime("%Y%m%d-%H%M%S")
                     path = os.path.join(self.config.resource.play_record_dir,
                                         self.config.resource.play_record_filename_tmpl % game_id)
@@ -157,16 +159,18 @@ class PlayWithHuman:
                     sys.exit()
                 elif event.type == VIDEORESIZE:
                     pass
-                elif event.type == MOUSEBUTTONDOWN:
-                    mouse_x, mouse_y = pygame.mouse.get_pos()
-                    # 检查是否点击悔棋按钮
-                    if self.undo_button_rect.collidepoint(mouse_x, mouse_y):
+                elif event.type == KEYDOWN:
+                    # 按下'u'键悔棋
+                    if event.key == pygame.K_u:
                         self.undo_move()
                         # 重新创建棋子精灵组
                         self.chessmans.empty()
                         creat_sprite_group(self.chessmans, self.env.board.chessmans_hash, self.chessman_w, self.chessman_h)
+                        current_chessman = None
                         continue
-
+                elif event.type == MOUSEBUTTONDOWN:
+                    mouse_x, mouse_y = pygame.mouse.get_pos()
+                    # 不再检查悔棋按钮区域
                     if human_first == self.env.red_to_move:
                         pressed_array = pygame.mouse.get_pressed()
                         for index in range(len(pressed_array)):
@@ -218,7 +222,9 @@ class PlayWithHuman:
             self.chessmans.draw(screen)
             pygame.display.update()
 
-        self.ai.close(wait=False)
+        self.ai_should_exit = True
+        if self.ai_worker:
+            self.ai_worker.join(timeout=2)
         logger.info(f"Winner is {self.env.board.winner} !!!")
         self.env.board.print_record()
         game_id = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -229,27 +235,37 @@ class PlayWithHuman:
 
     def undo_move(self):
         """
-        悔棋功能：回退到上一步状态（如历史只剩初始则无法悔棋）
+        悔棋功能：回退到上一步（建议悔棋时回退两步：人和AI各一步）
         """
-        if len(self.history) > 1:
-            # 弹出当前状态
+        # 通知AI线程退出
+        self.ai_should_exit = True
+        if self.ai_worker:
+            self.ai_worker.join(timeout=2)  # 等待AI线程退出，防止多线程写冲突
+        if len(self.history) > 2:
+            self.history.pop()
             self.history.pop()
             prev_state = self.history[-1]
-            # 恢复棋盘状态
             self.env.set_state(prev_state)
             self.env.board.print_to_cl()
-            print("悔棋成功，已回到上一步。")
+            print("悔棋成功，已回到上一步（人和AI各一步）。")
+        elif len(self.history) > 1:
+            self.history.pop()
+            prev_state = self.history[-1]
+            self.env.set_state(prev_state)
+            self.env.board.print_to_cl()
+            print("悔棋成功，已回到初始。")
         else:
             print("已经是初始局面，无法悔棋。")
+        # 重启AI线程
+        self.ai_should_exit = False
+        self.ai_worker = Thread(target=self.ai_move, name="ai_worker")
+        self.ai_worker.daemon = True
+        self.ai_worker.start()
 
     def ai_move(self):
-        """
-        AI后台线程，自动判断并走棋。
-        """
         ai_move_first = not self.human_move_first
-        # self.history = [self.env.get_state()]  # 移至start初始化
         no_act = None
-        while not self.env.done:
+        while not self.env.done and not self.ai_should_exit:
             if ai_move_first == self.env.red_to_move:
                 labels = ActionLabelsRed
                 labels_n = len(ActionLabelsRed)
@@ -303,6 +319,9 @@ class PlayWithHuman:
                     chessman_sprite.move(x1, y1, self.chessman_w, self.chessman_h)
                 # 记录AI落子后棋盘状态
                 self.history.append(self.env.get_state())
+            else:
+                # 如果不是AI走棋，AI线程sleep等待下一轮
+                time.sleep(0.05)
 
     def draw_widget(self, screen, widget_background):
         """
@@ -312,12 +331,7 @@ class PlayWithHuman:
         widget_background.fill((255, 255, 255), white_rect)
         pygame.draw.line(widget_background, (255, 0, 0), (10, 285), (self.screen_width - self.width - 10, 285))
         screen.blit(widget_background, (self.width, 0))
-        # 绘制悔棋按钮
-        pygame.draw.rect(widget_background, (200, 200, 200), self.undo_button_rect)
-        font_file = self.config.resource.font_path
-        undo_font = pygame.font.Font(font_file, 20)
-        undo_text = undo_font.render("悔棋", True, (0, 0, 0))
-        widget_background.blit(undo_text, (self.width + 40, self.height - 50))
+        # 不再绘制悔棋按钮
         self.draw_records(screen, widget_background)
         self.draw_evaluation(screen, widget_background)
 

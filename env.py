@@ -71,6 +71,7 @@ class CChessEnv:
             self.board.init_board(fen)
         # 重新计算相关属性
         self.winner = None
+        self.board.winner = None  # <== 增加这行，确保board对象的winner也清空
         self.num_halfmoves = 0
         self.board.clear_chessmans_moving_list()
         self.board.calc_chessmans_moving_list()
