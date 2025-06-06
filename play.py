@@ -136,8 +136,8 @@ class PlayWithHuman:
         if human_first:
             self.env.board.calc_chessmans_moving_list()
 
-        # 历史初始化为初始状态
-        self.history = [self.env.get_state()]
+        # 历史初始化为初始状态（保存FEN、着法记录、着法编号）
+        self.history = [(self.env.observation, self.env.board.record, self.env.board.turns)]
 
         # 启动AI线程
         self.ai_should_exit = False
@@ -165,7 +165,8 @@ class PlayWithHuman:
                         self.undo_move()
                         # 重新创建棋子精灵组
                         self.chessmans.empty()
-                        creat_sprite_group(self.chessmans, self.env.board.chessmans_hash, self.chessman_w, self.chessman_h)
+                        creat_sprite_group(self.chessmans, self.env.board.chessmans_hash, self.chessman_w,
+                                           self.chessman_h)
                         current_chessman = None
                         continue
                 elif event.type == MOUSEBUTTONDOWN:
@@ -194,23 +195,25 @@ class PlayWithHuman:
                                                str(col_num) + str(row_num)
                                         success = current_chessman.move(col_num, row_num, self.chessman_w,
                                                                         self.chessman_h)
-                                        # 记录落子后棋盘状态
+                                        # 记录落子后棋盘状态、着法记录、编号
                                         if success:
                                             self.chessmans.remove(chessman_sprite)
                                             chessman_sprite.kill()
                                             current_chessman.is_selected = False
                                             current_chessman = None
-                                            self.history.append(self.env.get_state())
+                                            self.history.append(
+                                                (self.env.observation, self.env.board.record, self.env.board.turns))
                                 elif current_chessman != None and chessman_sprite is None:
                                     move = str(current_chessman.chessman.col_num) + str(
                                         current_chessman.chessman.row_num) + \
                                            str(col_num) + str(row_num)
                                     success = current_chessman.move(col_num, row_num, self.chessman_w, self.chessman_h)
-                                    # 记录落子后棋盘状态
+                                    # 记录落子后棋盘状态、着法记录、编号
                                     if success:
                                         current_chessman.is_selected = False
                                         current_chessman = None
-                                        self.history.append(self.env.get_state())
+                                        self.history.append(
+                                            (self.env.observation, self.env.board.record, self.env.board.turns))
 
             self.draw_widget(screen, widget_background)
             framerate.tick(20)
@@ -244,18 +247,23 @@ class PlayWithHuman:
         if len(self.history) > 2:
             self.history.pop()
             self.history.pop()
-            prev_state = self.history[-1]
+            prev_state, prev_record, prev_turns = self.history[-1]
             self.env.set_state(prev_state)
+            self.env.board.record = prev_record
+            self.env.board.turns = prev_turns
             self.env.board.print_to_cl()
             print("悔棋成功，已回到上一步（人和AI各一步）。")
         elif len(self.history) > 1:
             self.history.pop()
-            prev_state = self.history[-1]
+            prev_state, prev_record, prev_turns = self.history[-1]
             self.env.set_state(prev_state)
+            self.env.board.record = prev_record
+            self.env.board.turns = prev_turns
             self.env.board.print_to_cl()
             print("悔棋成功，已回到初始。")
         else:
             print("已经是初始局面，无法悔棋。")
+
         # 重启AI线程
         self.ai_should_exit = False
         self.ai_worker = Thread(target=self.ai_move, name="ai_worker")
@@ -273,14 +281,14 @@ class PlayWithHuman:
                 state = self.env.get_state()
                 logger.info(f"state = {state}")
                 _, _, _, check = senv.done(state, need_check=True)
-                if not check and state in self.history[:-1]:
+                if not check and state in [h[0] for h in self.history[:-1]]:
                     no_act = []
                     free_move = defaultdict(int)
                     for i in range(len(self.history) - 1):
-                        if self.history[i] == state:
+                        if self.history[i][0] == state:
                             # 如果走了下一步是将军或捉：禁止走那步
-                            if senv.will_check_or_catch(state, self.history[i + 1]):
-                                no_act.append(self.history[i + 1])
+                            if senv.will_check_or_catch(state, self.history[i + 1][0]):
+                                no_act.append(self.history[i + 1][0])
                             # 否则当作闲着处理
                             else:
                                 free_move[state] += 1
@@ -317,8 +325,8 @@ class PlayWithHuman:
                     sprite_dest.kill()
                 if chessman_sprite:
                     chessman_sprite.move(x1, y1, self.chessman_w, self.chessman_h)
-                # 记录AI落子后棋盘状态
-                self.history.append(self.env.get_state())
+                # 记录AI落子后棋盘状态、着法记录、编号
+                self.history.append((self.env.observation, self.env.board.record, self.env.board.turns))
             else:
                 # 如果不是AI走棋，AI线程sleep等待下一轮
                 time.sleep(0.05)

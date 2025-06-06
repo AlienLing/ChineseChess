@@ -69,6 +69,10 @@ class PlayWithHuman:
         else:
             print("已经是初始局面，无法悔棋。")
 
+        if len(self.history) == 1 and ' ' not in self.history[0]:
+            # 补全初始FEN（极少数情况下）
+            self.history[0] += ' r - - 0 1'
+
     def start(self, human_first=True):
         """
         主循环，控制人机对弈流程
@@ -85,7 +89,7 @@ class PlayWithHuman:
         labels_n = len(ActionLabelsRed)
 
         # 记录初始状态
-        self.history = [self.env.get_state()]
+        self.history = [self.env.observation]
 
         self.env.board.print_to_cl()
 
@@ -131,7 +135,7 @@ class PlayWithHuman:
                     is_correct_position = chessman.move(x, y)
                     if is_correct_position:
                         # 记录本步后的状态
-                        self.history.append(self.env.get_state())
+                        self.history.append(self.env.observation)
                         self.env.board.print_to_cl()
                         self.env.board.clear_chessmans_moving_list()
             else:
@@ -145,7 +149,7 @@ class PlayWithHuman:
                 self.env.step(action)
                 print(f"AI选择移动 {action}")
                 # 记录本步后的状态
-                self.history.append(self.env.get_state())
+                self.history.append(self.env.observation)
                 self.env.board.print_to_cl()
 
         self.ai.close()

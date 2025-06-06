@@ -303,19 +303,12 @@ class Chessboard(object):
                 else:
                     count += 1
 
-    def print_to_cl(self, is_print = True):
-        screen = "\r\n"
-        for i in range(9, -1, -1):
-            for j in range(9):
-                if self.__chessmans[j][i] != None:
-                    screen += self.__chessmans[j][i].name_cn
-                else:
-                    screen += "   .   "
-            screen += "\r\n" * 3
+    def print_to_cl(self, is_print=True):
+        # 只打印着法记录，不打印棋盘
         if is_print:
-            print(screen)
+            print(self.record)
         else:
-            self.__screen = screen
+            self.__screen = self.record
 
     def is_check(self):
         if self.__is_red_turn:
@@ -546,19 +539,24 @@ class Chessboard(object):
                     final_move = move
                     break
         return (self.winner != None, final_move)
+
     def from_fen(self, fen):
         """
         根据FEN字符串还原棋盘状态
         """
-        # 清空棋盘
         self.__chessmans = [([None] * 10) for _ in range(9)]
         self.__chessmans_hash = {}
-        self.__is_red_turn = True
         self.turns = 1
         self.record = ''
         self.winner = None
 
-        rows = fen.split('/')
+        foo = fen.strip().split(' ')
+        rows = foo[0].split('/')
+        if len(foo) > 1:
+            self.__is_red_turn = (foo[1] == 'r')
+        else:
+            self.__is_red_turn = True  # 或raise异常
+
         for y in range(9, -1, -1):
             row = rows[9 - y]
             x = 0
@@ -566,13 +564,12 @@ class Chessboard(object):
                 if ch.isdigit():
                     x += int(ch)
                 else:
-                    # 创建棋子对象
                     is_red = ch.isupper()
-                    # 通过FEN字符查找棋子类型
                     piece_type = ch.upper()
+                    # 修改此处
                     if piece_type == 'R':
                         c = Rook(" 车红 " if is_red else " 车黑 ", f"rook_{x}_{y}", is_red, self, ch)
-                    elif piece_type == 'N' or piece_type == 'K':  # N/K: 马
+                    elif piece_type == 'N' or piece_type == 'K':
                         c = Knight(" 马红 " if is_red else " 马黑 ", f"knight_{x}_{y}", is_red, self, ch)
                     elif piece_type == 'C':
                         c = Cannon(" 炮红 " if is_red else " 炮黑 ", f"cannon_{x}_{y}", is_red, self, ch)
@@ -581,7 +578,12 @@ class Chessboard(object):
                     elif piece_type == 'M':
                         c = Mandarin(" 仕红 " if is_red else " 士黑 ", f"mandarin_{x}_{y}", is_red, self, ch)
                     elif piece_type == 'S':
-                        c = King(" 帅红 " if is_red else " 将黑 ", f"king_{x}_{y}", is_red, self, ch)
+                        # 特别修正：帅用red_king，将用black_king
+                        if is_red:
+                            name = "red_king"
+                        else:
+                            name = "black_king"
+                        c = King(" 帅红 " if is_red else " 将黑 ", name, is_red, self, ch)
                     elif piece_type == 'P':
                         c = Pawn(" 兵红 " if is_red else " 卒黑 ", f"pawn_{x}_{y}", is_red, self, ch)
                     else:
@@ -590,8 +592,6 @@ class Chessboard(object):
                     x += 1
         self.clear_chessmans_moving_list()
         self.calc_chessmans_moving_list()
-
-
 
 RECORD_NOTES = [
     ['0', '0'], ['1', u'一'], ['2', u'二'],
